@@ -46,3 +46,15 @@ body.started footer{left:162px}
 #controlHint{display:none}
 #touchHint{display:inline}
 }
+
+/* Character arrows could be selected, and a long press raised the iOS callout. */
+#mobileControls button{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;display:inline-flex;align-items:center;justify-content:center;padding:0}
+#mobileControls button svg{width:22px;height:22px;pointer-events:none;fill:none;stroke:#25403a;stroke-width:2.1;stroke-linecap:round;stroke-linejoin:round}
+#mobileControls button:active{background:#e4e9dc}
+#mobileControls [data-key="KeyA"] svg{transform:rotate(-90deg)}
+#mobileControls [data-key="KeyS"] svg{transform:rotate(180deg)}
+#mobileControls [data-key="KeyD"] svg{transform:rotate(90deg)}
+@media(max-width:700px){#mobileControls button svg{width:19px;height:19px}}
+@media(orientation:landscape) and (max-height:540px){#mobileControls button svg{width:19px;height:19px}}
+/* The HUD is not text to select; a long press on it should not raise a callout. */
+button,kbd,#doorHint,.location,.brand,footer{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
