@@ -44,7 +44,7 @@ function labelDoor(d){return doorNames[d.source]||(d.source.startsWith('Rear_doo
 
 async function load(){
  try{
-  metadata=await (await fetch('./assets/house.json')).json();
+  metadata=await (await fetch('./assets/house.json?v=202609241224')).json();
   const gltf=await new GLTFLoader().loadAsync('./assets/house.glb',e=>setProgress(6+(e.total?e.loaded/e.total:0)*65,'正在布置家具与房间…'));
   house=gltf.scene;scene.add(house);house.updateMatrixWorld(true);
   setProgress(75,'正在连接门和通道…');await new Promise(r=>setTimeout(r,30));
