@@ -55,6 +55,13 @@ async function load(){
    const meshes=[];old.traverse(o=>{if(o.isMesh)meshes.push(o);});
    if(!meshes.length){scene.remove(group);continue;}
    meshes.forEach(o=>group.attach(o));
+   // A door hung on the other jamb is also handed the other way: mirror the leaf about its
+   // own centre line so the handle and any asymmetric hardware sit on the free edge.
+   if(typeof d.mirrorX==='number'){
+    const flip=new THREE.Group();flip.name='mirror_'+d.id;
+    flip.position.x=2*(d.mirrorX-d.pivot[0]);flip.scale.x=-1;
+    group.add(flip);meshes.forEach(o=>flip.add(o));
+   }
    const door={...d,group,meshes,amount:d.initial,target:d.initial,label:labelDoor(d),blockedAt:0};
    meshes.forEach(o=>o.userData.interactiveDoor=d.id);
    doors.push(door);doorById.set(d.id,door);
