@@ -1,4 +1,4 @@
-const BUILD='202609241521';
+const BUILD='202609241539';
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {Octree} from 'three/addons/math/Octree.js';
@@ -35,11 +35,11 @@ scene.add(new THREE.AmbientLight(0xfff5de,.65));
 const sun=new THREE.DirectionalLight(0xfff6e3,2.1);sun.position.set(-8,16,2);scene.add(sun);
 const player=new THREE.Vector3(3.64,.02,-.75),lastSafe=player.clone();
 let yaw=0,pitch=0,ready=false,started=false,thirdPerson=false,activeDoor=null,walking=0,lastTime=performance.now(),lastRoom='',hintTimer=0;
-const keys=new Set(),staticMeshes=[],floorMeshes=[],doors=[],doorById=new Map(),ray=new THREE.Raycaster(),up=new THREE.Vector3(0,1,0),down=new THREE.Vector3(0,-1,0),octree=new Octree();
+const keys=new Set(),floorMeshes=[],doors=[],doorById=new Map(),ray=new THREE.Raycaster(),up=new THREE.Vector3(0,1,0),down=new THREE.Vector3(0,-1,0),octree=new Octree();
 // A nine-level octree over 270k collision triangles is what makes iOS run out of memory,
 // so phones get a shallower tree with bigger leaves.
 octree.maxLevel=MOBILE?5:9;octree.trianglesPerLeaf=MOBILE?96:24;
-let house,metadata,staticCollider;
+let house,metadata;
 const capsule=new Capsule(new THREE.Vector3(),new THREE.Vector3(),.18);
 const avatar=new THREE.Group();scene.add(avatar);
 const suit=new THREE.MeshStandardMaterial({color:0x375b55,roughness:.85}),skin=new THREE.MeshStandardMaterial({color:0xc7a58d,roughness:.8}),trousers=new THREE.MeshStandardMaterial({color:0x334348});
@@ -56,7 +56,7 @@ function labelDoor(d){return doorNames[d.source]||(d.source.startsWith('Rear_doo
 async function load(){
  try{
   metadata=await (await fetch('./assets/house.json?v='+BUILD+'')).json();
-  const gltf=await new GLTFLoader().loadAsync('./assets/house.glb?v='+BUILD,e=>setProgress(6+(e.total?e.loaded/e.total:0)*65,'正在布置家具与房间…'));
+  const gltf=await new GLTFLoader().loadAsync('./assets/house'+(MOBILE?'-mobile':'')+'.glb?v='+BUILD,e=>setProgress(6+(e.total?e.loaded/e.total:0)*65,'正在布置家具与房间…'));
   house=gltf.scene;scene.add(house);house.updateMatrixWorld(true);
   setProgress(75,'正在连接门和通道…');await new Promise(r=>setTimeout(r,30));
   // Imported door meshes are in world coordinates. Attach them to explicit hinges.
@@ -81,6 +81,8 @@ async function load(){
   for(const d of doors){if(d.parent){doorById.get(d.parent).group.attach(d.group);}}
   for(const d of doors){d.basePosition=d.group.position.clone();d.baseQuaternion=d.group.quaternion.clone();d.localBoxes=d.meshes.map(m=>{m.geometry.computeBoundingBox();return {mesh:m,box:m.geometry.boundingBox.clone()};});applyDoor(d,d.amount);}
   house.updateMatrixWorld(true);scene.updateMatrixWorld(true);
+  // Geometry can be shared between meshes, so count users before anything is freed.
+  const geomUsers=new Map();scene.traverse(o=>{if(o.isMesh)geomUsers.set(o.geometry,(geomUsers.get(o.geometry)||0)+1);});
   setProgress(78,'正在建立碰撞体…');await new Promise(r=>setTimeout(r,20));
   const colGroup=new THREE.Group(),colMat=new THREE.MeshBasicMaterial({side:THREE.DoubleSide});let triangles=0;
   house.traverse(o=>{
@@ -90,17 +92,19 @@ async function load(){
    for(const m of mats){if(m.map)m.map.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());}
    if(info.walkSurface)floorMeshes.push(o);
    if(!info.solid)return;
-   staticMeshes.push(o);
    // Highly detailed ornaments use compact collision hulls; walls keep exact openings.
    const tri=(o.geometry.index?.count||o.geometry.attributes.position.count)/3;
    let clone;
    if(tri>(MOBILE?120:1800)&&!/wall|slab|floor|stair|step|landing/i.test(info.sourceName||'')){
     const b=new THREE.Box3().setFromObject(o),size=b.getSize(new THREE.Vector3());
-    clone=new THREE.Mesh(new THREE.BoxGeometry(size.x,size.y,size.z),colMat);clone.position.copy(b.getCenter(new THREE.Vector3()));
+    clone=new THREE.Mesh(new THREE.BoxGeometry(size.x,size.y,size.z),colMat);clone.position.copy(b.getCenter(new THREE.Vector3()));clone.userData.proxy=true;
    }else{clone=new THREE.Mesh(o.geometry,colMat);clone.matrix.copy(o.matrixWorld);clone.matrixAutoUpdate=false;}
    colGroup.add(clone);triangles+=clone.geometry===o.geometry?tri:12;
   });
-  octree.fromGraphNode(colGroup);staticCollider=colGroup;
+  octree.fromGraphNode(colGroup);
+  // The octree copied the triangles it needs, and nothing reads the collider group again.
+  for(const o of colGroup.children)if(o.userData.proxy)o.geometry.dispose();
+  colGroup.clear();colMat.dispose();
   setProgress(88,'正在合并材质…');await new Promise(r=>setTimeout(r,20));
   // Merge fixed meshes by material after building collision data to keep rendering responsive.
   const buckets=new Map(),remove=[];
@@ -112,7 +116,9 @@ async function load(){
   }
   // The originals are duplicated inside the merged meshes now. Their geometry stays alive for
   // floor picking and collision, but they leave the graph so they stop being traversed.
-  for(const o of remove)o.parent&&o.parent.remove(o);
+  const keepGeom=new Set(floorMeshes.map(o=>o.geometry)),mergedUse=new Map();
+  for(const o of remove){o.parent&&o.parent.remove(o);mergedUse.set(o.geometry,(mergedUse.get(o.geometry)||0)+1);}
+  for(const [g,n] of mergedUse)if(!keepGeom.has(g)&&n>=(geomUsers.get(g)||0))g.dispose();
   setProgress(96,'正在布置房间导航…');makePlaces();ready=true;gotoPlace('P18');
   setProgress(100,`${metadata.places.length} 个位置 · ${doors.length} 扇可开合门`);$('#startBtn').disabled=false;$('#startBtn').textContent='开始漫游 →';
   window.walkthrough={ready:true,player,doors,metadata,gotoPlace,toggleDoor,step:movePlayer,updateDoors,applyDoor,scene,camera,renderer,octree,floorAt,doorHit,resolveStatic,start, floorMeshes, setView:(y,p=0)=>{yaw=y;pitch=p;},stats:()=>({meshes:metadata.meshes,doors:doors.length,triangles,position:player.toArray(),calls:renderer.info.render.calls})};
