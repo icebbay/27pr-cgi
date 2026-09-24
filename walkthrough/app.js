@@ -1,4 +1,4 @@
-const BUILD='202609241512';
+const BUILD='202609241521';
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {Octree} from 'three/addons/math/Octree.js';
@@ -11,9 +11,10 @@ import {OutputPass} from 'three/addons/postprocessing/OutputPass.js';
 import {RenderPass} from 'three/addons/postprocessing/RenderPass.js';
 
 const $=s=>document.querySelector(s),canvas=$('#view');
-const renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});
 // Phones report a wide but short viewport in landscape, so size is checked on both axes.
 const MOBILE=matchMedia('(pointer:coarse)').matches||Math.min(innerWidth,innerHeight)<520;
+// Multisampling costs another full-size buffer, which phones cannot spare.
+const renderer=new THREE.WebGLRenderer({canvas,antialias:!MOBILE,powerPreference:'high-performance'});
 renderer.setPixelRatio(Math.min(devicePixelRatio,MOBILE?1:1.5));renderer.setSize(innerWidth,innerHeight);
 renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.2;
 const scene=new THREE.Scene();scene.background=new THREE.Color('#cbd8d8');
@@ -35,7 +36,9 @@ const sun=new THREE.DirectionalLight(0xfff6e3,2.1);sun.position.set(-8,16,2);sce
 const player=new THREE.Vector3(3.64,.02,-.75),lastSafe=player.clone();
 let yaw=0,pitch=0,ready=false,started=false,thirdPerson=false,activeDoor=null,walking=0,lastTime=performance.now(),lastRoom='',hintTimer=0;
 const keys=new Set(),staticMeshes=[],floorMeshes=[],doors=[],doorById=new Map(),ray=new THREE.Raycaster(),up=new THREE.Vector3(0,1,0),down=new THREE.Vector3(0,-1,0),octree=new Octree();
-octree.maxLevel=9;octree.trianglesPerLeaf=24;
+// A nine-level octree over 270k collision triangles is what makes iOS run out of memory,
+// so phones get a shallower tree with bigger leaves.
+octree.maxLevel=MOBILE?5:9;octree.trianglesPerLeaf=MOBILE?96:24;
 let house,metadata,staticCollider;
 const capsule=new Capsule(new THREE.Vector3(),new THREE.Vector3(),.18);
 const avatar=new THREE.Group();scene.add(avatar);
@@ -78,6 +81,7 @@ async function load(){
   for(const d of doors){if(d.parent){doorById.get(d.parent).group.attach(d.group);}}
   for(const d of doors){d.basePosition=d.group.position.clone();d.baseQuaternion=d.group.quaternion.clone();d.localBoxes=d.meshes.map(m=>{m.geometry.computeBoundingBox();return {mesh:m,box:m.geometry.boundingBox.clone()};});applyDoor(d,d.amount);}
   house.updateMatrixWorld(true);scene.updateMatrixWorld(true);
+  setProgress(78,'正在建立碰撞体…');await new Promise(r=>setTimeout(r,20));
   const colGroup=new THREE.Group(),colMat=new THREE.MeshBasicMaterial({side:THREE.DoubleSide});let triangles=0;
   house.traverse(o=>{
    if(!o.isMesh)return;
@@ -90,13 +94,14 @@ async function load(){
    // Highly detailed ornaments use compact collision hulls; walls keep exact openings.
    const tri=(o.geometry.index?.count||o.geometry.attributes.position.count)/3;
    let clone;
-   if(tri>1800&&!/wall|slab|floor|stair|step|landing/i.test(info.sourceName||'')){
+   if(tri>(MOBILE?120:1800)&&!/wall|slab|floor|stair|step|landing/i.test(info.sourceName||'')){
     const b=new THREE.Box3().setFromObject(o),size=b.getSize(new THREE.Vector3());
     clone=new THREE.Mesh(new THREE.BoxGeometry(size.x,size.y,size.z),colMat);clone.position.copy(b.getCenter(new THREE.Vector3()));
    }else{clone=new THREE.Mesh(o.geometry,colMat);clone.matrix.copy(o.matrixWorld);clone.matrixAutoUpdate=false;}
-   colGroup.add(clone);triangles+=tri;
+   colGroup.add(clone);triangles+=clone.geometry===o.geometry?tri:12;
   });
   octree.fromGraphNode(colGroup);staticCollider=colGroup;
+  setProgress(88,'正在合并材质…');await new Promise(r=>setTimeout(r,20));
   // Merge fixed meshes by material after building collision data to keep rendering responsive.
   const buckets=new Map(),remove=[];
   house.traverse(o=>{if(o.isMesh&&!Array.isArray(o.material)&&!o.userData.interactiveDoor){const k=o.material.uuid;if(!buckets.has(k))buckets.set(k,[]);buckets.get(k).push(o);}});
@@ -105,7 +110,10 @@ async function load(){
    const gs=list.map(o=>{let g=o.geometry.index?o.geometry.toNonIndexed():o.geometry.clone();g.applyMatrix4(o.matrixWorld);for(const a of Object.keys(g.attributes))if(!['position','normal','uv'].includes(a))g.deleteAttribute(a);if(!g.attributes.uv)g.setAttribute('uv',new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count*2),2));return g;});
    try{const g=mergeGeometries(gs);if(g){const mesh=new THREE.Mesh(g,list[0].material);scene.add(mesh);list.forEach(o=>{o.visible=false;remove.push(o);});}}catch(e){console.warn('Merge skipped',e.message);}gs.forEach(g=>g.dispose());
   }
-  makePlaces();ready=true;gotoPlace('P18');
+  // The originals are duplicated inside the merged meshes now. Their geometry stays alive for
+  // floor picking and collision, but they leave the graph so they stop being traversed.
+  for(const o of remove)o.parent&&o.parent.remove(o);
+  setProgress(96,'正在布置房间导航…');makePlaces();ready=true;gotoPlace('P18');
   setProgress(100,`${metadata.places.length} 个位置 · ${doors.length} 扇可开合门`);$('#startBtn').disabled=false;$('#startBtn').textContent='开始漫游 →';
   window.walkthrough={ready:true,player,doors,metadata,gotoPlace,toggleDoor,step:movePlayer,updateDoors,applyDoor,scene,camera,renderer,octree,floorAt,doorHit,resolveStatic,start, floorMeshes, setView:(y,p=0)=>{yaw=y;pitch=p;},stats:()=>({meshes:metadata.meshes,doors:doors.length,triangles,position:player.toArray(),calls:renderer.info.render.calls})};
  }catch(e){console.error(e);$('#loadStatus').textContent='加载未完成：'+e.message;$('#startBtn').textContent='刷新重试';$('#startBtn').disabled=false;$('#startBtn').onclick=()=>location.reload();}
