@@ -1,4 +1,4 @@
-const BUILD='202609241455';
+const BUILD='202609241512';
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {Octree} from 'three/addons/math/Octree.js';
@@ -12,14 +12,21 @@ import {RenderPass} from 'three/addons/postprocessing/RenderPass.js';
 
 const $=s=>document.querySelector(s),canvas=$('#view');
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});
-renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));renderer.setSize(innerWidth,innerHeight);
+// Phones report a wide but short viewport in landscape, so size is checked on both axes.
+const MOBILE=matchMedia('(pointer:coarse)').matches||Math.min(innerWidth,innerHeight)<520;
+renderer.setPixelRatio(Math.min(devicePixelRatio,MOBILE?1:1.5));renderer.setSize(innerWidth,innerHeight);
 renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.2;
 const scene=new THREE.Scene();scene.background=new THREE.Color('#cbd8d8');
 const camera=new THREE.PerspectiveCamera(72,innerWidth/innerHeight,.055,100);
 camera.rotation.order='YXZ';
-const composer=new EffectComposer(renderer);
-const ao=new SSAOPass(scene,camera,innerWidth,innerHeight,16);ao.kernelRadius=.28;ao.minDistance=.001;ao.maxDistance=.16;
-composer.addPass(new RenderPass(scene,camera));composer.addPass(ao);composer.addPass(new OutputPass());
+// Ambient occlusion needs several full-size buffers plus a depth texture. Phone GPUs run
+// out of memory on that, so they render straight to the canvas instead.
+let composer=null;
+if(!MOBILE){
+ composer=new EffectComposer(renderer);
+ const ao=new SSAOPass(scene,camera,innerWidth,innerHeight,16);ao.kernelRadius=.28;ao.minDistance=.001;ao.maxDistance=.16;
+ composer.addPass(new RenderPass(scene,camera));composer.addPass(ao);composer.addPass(new OutputPass());
+}
 const pmrem=new THREE.PMREMGenerator(renderer);const env=new RoomEnvironment();
 scene.environment=pmrem.fromScene(env,.04).texture;scene.environmentIntensity=.35;env.dispose();pmrem.dispose();
 scene.add(new THREE.HemisphereLight(0xe8f2ff,0x8b816c,2.2));
@@ -217,8 +224,11 @@ function frame(now){requestAnimationFrame(frame);const dt=Math.min((now-lastTime
    let f=(keys.has('KeyW')||keys.has('ArrowUp')?1:0)-(keys.has('KeyS')||keys.has('ArrowDown')?1:0),r=(keys.has('KeyD')||keys.has('ArrowRight')?1:0)-(keys.has('KeyA')||keys.has('ArrowLeft')?1:0);
    if(f||r){const v=new THREE.Vector3(r,0,-f).normalize().applyAxisAngle(up,yaw).multiplyScalar(dt*(keys.has('ShiftLeft')?2.5:1.45));const n=Math.ceil(v.length()/.035);for(let i=0;i<n;i++)walking+=movePlayer(v.x/n,v.z/n)*7;}
   }updateCamera(dt);if(started&&tick%2===0)interactions();else tick++;
- }composer.render();
+ }if(composer)composer.render();else renderer.render(scene,camera);
 }
+canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();
+ const s=$('#loadStatus');if(s)s.textContent='显卡上下文丢失，请刷新页面。';
+ toast('显示中断，请刷新页面');},false);
 function start(){if(!ready)return;started=true;document.body.classList.add('started');$('#welcome').hidden=true;if(!matchMedia('(pointer:coarse)').matches)canvas.requestPointerLock?.()?.catch?.(()=>toast('拖动画面也可以环顾'));}
 function toggleMode(){thirdPerson=!thirdPerson;$('#modeBtn').textContent=thirdPerson?'第一人称':'跟随人物';}
 $('#startBtn').onclick=start;$('#modeBtn').onclick=toggleMode;$('#resetBtn').onclick=()=>gotoPlace('P18');
@@ -238,7 +248,7 @@ function frameCamera(){const aspect=innerWidth/innerHeight;
  camera.fov=aspect>=1.2?72:THREE.MathUtils.clamp(2*THREE.MathUtils.radToDeg(Math.atan(Math.tan(THREE.MathUtils.degToRad(36))*1.2/aspect)),72,88);
  camera.aspect=aspect;camera.updateProjectionMatrix();}
 frameCamera();
-window.addEventListener('resize',()=>{frameCamera();renderer.setSize(innerWidth,innerHeight);composer.setSize(innerWidth,innerHeight);});
-window.addEventListener('orientationchange',()=>setTimeout(()=>{frameCamera();renderer.setSize(innerWidth,innerHeight);composer.setSize(innerWidth,innerHeight);},250));
+window.addEventListener('resize',()=>{frameCamera();renderer.setSize(innerWidth,innerHeight);if(composer)composer.setSize(innerWidth,innerHeight);});
+window.addEventListener('orientationchange',()=>setTimeout(()=>{frameCamera();renderer.setSize(innerWidth,innerHeight);if(composer)composer.setSize(innerWidth,innerHeight);},250));
 load();requestAnimationFrame(frame);
 
