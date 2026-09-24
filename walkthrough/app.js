@@ -44,7 +44,7 @@ function labelDoor(d){return doorNames[d.source]||(d.source.startsWith('Rear_doo
 
 async function load(){
  try{
-  metadata=await (await fetch('./assets/house.json?v=202609241224')).json();
+  metadata=await (await fetch('./assets/house.json?v=202609241251')).json();
   const gltf=await new GLTFLoader().loadAsync('./assets/house.glb',e=>setProgress(6+(e.total?e.loaded/e.total:0)*65,'正在布置家具与房间…'));
   house=gltf.scene;scene.add(house);house.updateMatrixWorld(true);
   setProgress(75,'正在连接门和通道…');await new Promise(r=>setTimeout(r,30));
@@ -218,7 +218,7 @@ function frame(now){requestAnimationFrame(frame);const dt=Math.min((now-lastTime
   }updateCamera(dt);if(started&&tick%2===0)interactions();else tick++;
  }composer.render();
 }
-function start(){if(!ready)return;started=true;$('#welcome').hidden=true;if(!matchMedia('(pointer:coarse)').matches)canvas.requestPointerLock?.()?.catch?.(()=>toast('拖动画面也可以环顾'));}
+function start(){if(!ready)return;started=true;document.body.classList.add('started');$('#welcome').hidden=true;if(!matchMedia('(pointer:coarse)').matches)canvas.requestPointerLock?.()?.catch?.(()=>toast('拖动画面也可以环顾'));}
 function toggleMode(){thirdPerson=!thirdPerson;$('#modeBtn').textContent=thirdPerson?'第一人称':'跟随人物';}
 $('#startBtn').onclick=start;$('#modeBtn').onclick=toggleMode;$('#resetBtn').onclick=()=>gotoPlace('P18');
 $('#placesBtn').onclick=()=>{document.exitPointerLock?.();$('#places').hidden=!$('#places').hidden;keys.clear();};$('#closePlaces').onclick=()=>$('#places').hidden=true;
@@ -231,6 +231,13 @@ canvas.addEventListener('pointerdown',e=>{if(!started)return;if(activeDoor&&e.po
 canvas.addEventListener('pointerup',e=>{if(drag&&Math.abs(e.clientX-drag.x)+Math.abs(e.clientY-drag.y)<5&&e.pointerType==='mouse')canvas.requestPointerLock?.()?.catch?.(()=>{});drag=null;});
 document.addEventListener('pointermove',e=>{if(!started)return;let dx=0,dy=0;if(document.pointerLockElement===canvas){dx=e.movementX;dy=e.movementY;}else if(drag&&e.target===canvas){dx=e.clientX-drag.x;dy=e.clientY-drag.y;drag={x:e.clientX,y:e.clientY};}yaw-=dx*.0025;pitch=THREE.MathUtils.clamp(pitch-dy*.0025,-1.25,1.25);});
 document.querySelectorAll('[data-key]').forEach(b=>{b.onpointerdown=e=>{e.preventDefault();b.setPointerCapture(e.pointerId);keys.add(b.dataset.key);};b.onpointerup=b.onpointercancel=()=>keys.delete(b.dataset.key);});
-window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);composer.setSize(innerWidth,innerHeight);});
+// A phone held upright squeezes the horizontal view down to about 37 degrees at the
+// fixed 72 degree vertical angle, so widen the vertical angle on tall screens only.
+function frameCamera(){const aspect=innerWidth/innerHeight;
+ camera.fov=aspect>=1.2?72:THREE.MathUtils.clamp(2*THREE.MathUtils.radToDeg(Math.atan(Math.tan(THREE.MathUtils.degToRad(36))*1.2/aspect)),72,88);
+ camera.aspect=aspect;camera.updateProjectionMatrix();}
+frameCamera();
+window.addEventListener('resize',()=>{frameCamera();renderer.setSize(innerWidth,innerHeight);composer.setSize(innerWidth,innerHeight);});
+window.addEventListener('orientationchange',()=>setTimeout(()=>{frameCamera();renderer.setSize(innerWidth,innerHeight);composer.setSize(innerWidth,innerHeight);},250));
 load();requestAnimationFrame(frame);
 
