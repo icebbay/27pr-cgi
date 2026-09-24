@@ -57,4 +57,8 @@ body.started footer{left:162px}
 @media(max-width:700px){#mobileControls button svg{width:19px;height:19px}}
 @media(orientation:landscape) and (max-height:540px){#mobileControls button svg{width:19px;height:19px}}
 /* The HUD is not text to select; a long press on it should not raise a callout. */
-button,kbd,#doorHint,.location,.brand,footer{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+/* Nothing in a walkthrough is text to select, and a long press must never raise the
+   iOS callout over the controls. Applied at the root so no child can opt back in. */
+html,body,#mobileControls,#mobileControls button,#mobileControls svg,button,kbd,#doorHint,.location,.brand,footer,header,aside
+{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;-webkit-user-drag:none}
+#buildTag{display:block;margin-top:14px;color:#95a197;font-size:10px;letter-spacing:1px}

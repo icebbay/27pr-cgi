@@ -1,4 +1,4 @@
-const BUILD='202609241625';
+const BUILD='202609241636';
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {Octree} from 'three/addons/math/Octree.js';
@@ -248,6 +248,7 @@ function toggleMode(){thirdPerson=!thirdPerson;$('#modeBtn').textContent=thirdPe
 $('#startBtn').onclick=start;$('#modeBtn').onclick=toggleMode;$('#resetBtn').onclick=()=>gotoPlace('P18');
 $('#placesBtn').onclick=()=>{document.exitPointerLock?.();$('#places').hidden=!$('#places').hidden;keys.clear();};$('#closePlaces').onclick=()=>$('#places').hidden=true;
 $('#helpBtn').onclick=()=>{document.exitPointerLock?.();$('#help').hidden=false;keys.clear();};$('#closeHelp').onclick=$('#helpContinue').onclick=()=>$('#help').hidden=true;
+{const t=$('#buildTag');if(t)t.textContent='版本 '+BUILD;}
 $('#doorHint').onclick=()=>toggleDoor(activeDoor);$('#fullscreenBtn').onclick=()=>document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen().catch(()=>{});
 document.addEventListener('keydown',e=>{if(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code))e.preventDefault();keys.add(e.code);if(e.repeat)return;if(e.code==='Escape'){document.exitPointerLock?.();keys.clear();drag=null;}if(e.code==='KeyE'&&started)toggleDoor(activeDoor);if(e.code==='KeyV')toggleMode();});
 document.addEventListener('keyup',e=>keys.delete(e.code));window.addEventListener('blur',()=>keys.clear());document.addEventListener('visibilitychange',()=>keys.clear());document.addEventListener('pointerlockchange',()=>keys.clear());
