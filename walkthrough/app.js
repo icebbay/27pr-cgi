@@ -1,4 +1,4 @@
-const BUILD='202609271330';
+const BUILD='202609271410';
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {Octree} from 'three/addons/math/Octree.js';
@@ -35,7 +35,7 @@ scene.add(new THREE.AmbientLight(0xfff5de,.65));
 const sun=new THREE.DirectionalLight(0xfff6e3,2.1);sun.position.set(-8,16,2);scene.add(sun);
 const player=new THREE.Vector3(3.64,.02,-.75),lastSafe=player.clone();
 let yaw=0,pitch=0,ready=false,started=false,thirdPerson=false,activeDoor=null,activePart=null,walking=0,lastTime=performance.now(),lastRoom='',hintTimer=0;
-const keys=new Set(),floorMeshes=[],doors=[],doorById=new Map(),parts=[],partById=new Map(),partNodes=new Map(),ray=new THREE.Raycaster(),up=new THREE.Vector3(0,1,0),down=new THREE.Vector3(0,-1,0),octree=new Octree();
+const keys=new Set(),floorMeshes=[],doors=[],doorById=new Map(),parts=[],partById=new Map(),partNodes=new Map(),leafParts=[],ray=new THREE.Raycaster(),up=new THREE.Vector3(0,1,0),down=new THREE.Vector3(0,-1,0),octree=new Octree();
 // A nine-level octree over 270k collision triangles is what makes iOS run out of memory,
 // so phones get a shallower tree with bigger leaves.
 octree.maxLevel=MOBILE?5:9;octree.trianglesPerLeaf=MOBILE?96:24;
@@ -120,6 +120,8 @@ async function load(){
    parts.push(part);partById.set(j.id,part);
   }
   for(const o of partNodes.keys())o.matrixAutoUpdate=false;
+  // Product doors (F25/F26/F27) block the way like the house doors do.
+  for(const p of parts)if(p.joint==='leaf'){p.localBoxes=p.meshes.map(m=>{m.geometry.computeBoundingBox();return {mesh:m,box:m.geometry.boundingBox.clone()};});leafParts.push(p);}
   applyParts();
   house.updateMatrixWorld(true);scene.updateMatrixWorld(true);
   // Geometry can be shared between meshes, so count users before anything is freed.
@@ -197,7 +199,7 @@ function updateParts(dt){
  if(moved)applyParts();
 }
 function doorHit(pos,only=null){
- const list=only?[only]:doors;
+ const list=only?[only]:doors.concat(leafParts);
  for(const d of list)for(const {mesh,box} of d.localBoxes){
   const inv=mesh.matrixWorld.clone().invert();
   for(const h of [.5,1.1,1.5]){
