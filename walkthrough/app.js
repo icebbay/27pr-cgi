@@ -1,4 +1,4 @@
-const BUILD='202609241636';
+const BUILD='202609271330';
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {Octree} from 'three/addons/math/Octree.js';
@@ -34,8 +34,8 @@ scene.add(new THREE.HemisphereLight(0xe8f2ff,0x8b816c,2.2));
 scene.add(new THREE.AmbientLight(0xfff5de,.65));
 const sun=new THREE.DirectionalLight(0xfff6e3,2.1);sun.position.set(-8,16,2);scene.add(sun);
 const player=new THREE.Vector3(3.64,.02,-.75),lastSafe=player.clone();
-let yaw=0,pitch=0,ready=false,started=false,thirdPerson=false,activeDoor=null,walking=0,lastTime=performance.now(),lastRoom='',hintTimer=0;
-const keys=new Set(),floorMeshes=[],doors=[],doorById=new Map(),ray=new THREE.Raycaster(),up=new THREE.Vector3(0,1,0),down=new THREE.Vector3(0,-1,0),octree=new Octree();
+let yaw=0,pitch=0,ready=false,started=false,thirdPerson=false,activeDoor=null,activePart=null,walking=0,lastTime=performance.now(),lastRoom='',hintTimer=0;
+const keys=new Set(),floorMeshes=[],doors=[],doorById=new Map(),parts=[],partById=new Map(),partNodes=new Map(),ray=new THREE.Raycaster(),up=new THREE.Vector3(0,1,0),down=new THREE.Vector3(0,-1,0),octree=new Octree();
 // A nine-level octree over 270k collision triangles is what makes iOS run out of memory,
 // so phones get a shallower tree with bigger leaves.
 octree.maxLevel=MOBILE?5:9;octree.trianglesPerLeaf=MOBILE?96:24;
@@ -51,6 +51,30 @@ function toast(t){$('#toast').textContent=t;$('#toast').classList.add('show');cl
 function dataOf(o){while(o){if(o.userData.sourceName)return o.userData;o=o.parent;}return {};}
 function setProgress(n,t){$('#progressBar').style.width=n+'%';$('#loadStatus').textContent=t;}
 const doorNames={DoorHinge_GF_002:'杂物间门',DoorHinge_GF_003:'玄关门',DoorHinge_FF_014:'主卫转换门',DoorHinge_FF_007:'中间书房门',PassageHinge_FF:'次卧门',DoorHinge_FF_006:'主卧门',DoorHinge_FF_Rear215:'后书房门',DoorHinge_GF_WC200:'楼下洗手间门',DoorHinge_FF_Room199:'次卧卫浴门',WC214_SlidingDoor_PROVISIONAL:'后房卫浴推拉门',SlidingLeaf_Dining:'餐厅推拉门',CLOSET_Bifold_Hinge1:'衣帽间折叠门',CLOSET_Bifold_Hinge2:'衣帽间折叠门',DuoClassic_GateHinge:'电梯入口门'};
+// Movable product parts (exported from the product library's joints).
+const productNames={G02:'餐边柜',G03:'折叠泡茶桌',G09:'真皮沙发',G13:'鞋柜',G17:'展示柜',G18:'展示柜',G20:'马桶',G21:'电视柜',G22:'电视柜',G24:'软水机',G27:'吧台椅',G33:'移动屏风',
+ F02:'箱体床',F03:'床头柜',F04:'床头柜',F05:'升降梳妆台',F07:'床头柜',F08:'床头柜',F10:'半镜柜',F12:'台盆柜',F13:'智能马桶',F16:'智能马桶',F17:'台盆柜',F21a:'升降书桌',F21b:'升降书桌',
+ F24:'人体工学椅',F25:'主卫一门两用门',F26:'鞋帽间门',F27:'衣帽间门',F28:'人体工学椅',F29:'梳妆台',F31:'旋转毛巾架'};
+function jointName(id){
+ const n=m=>+m+1;let r;
+ if(r=id.match(/^(?:base_)?door_(\d)_open$/))return (id.startsWith('base')?'下柜门':'柜门')+n(r[1]);
+ if(r=id.match(/^drawer_(\d)(?:_open)?$/))return '抽屉'+n(r[1]);
+ if(r=id.match(/^panel_(\d)$/))return '面板'+n(r[1]);
+ if(r=id.match(/^bar_(\d)$/))return '毛巾杆'+n(r[1]);
+ if(r=id.match(/^seat_(\d)_out$/))return '座位'+n(r[1])+'伸展';
+ if(r=id.match(/^back_(\d)_fold$/))return '靠背'+n(r[1]);
+ if(r=id.match(/^glass_(\d)_slide$/))return '玻璃门'+n(r[1]);
+ if(r=id.match(/^fold_(\d)$/))return '桌板'+n(r[1]);
+ return {drawer:'抽屉',drawer_open:'抽屉',upper_drawer_open:'上抽屉',lower_drawer_open:'下抽屉',door_l_open:'左门',door_r_open:'右门',left_open:'左门',right_open:'右门',
+  left_flap_open:'翻板',lid_open:'盖板',storage_door:'储物门',leaf:'门',mirror:'镜子角度',mirror_lift:'镜子升降',lift:'升降',platform_lift:'床板掀起',
+  recline:'靠背后仰',headrest:'头枕',footrest:'搁脚',arm_l:'左扶手',arm_r:'右扶手',retract:'收放',seat_j:'座椅'}[id]||id;
+}
+function partVerb(p,on){
+ if(/drawer/.test(p.joint))return on?'拉出':'推回';
+ if(/door|leaf|flap|lid|open|glass/.test(p.joint))return on?'打开':'关闭';
+ return on?'调整':'复位';
+}
+function labelPart(j){return j.product+' '+(productNames[j.product]||'')+' · '+(j.product==='F25'&&j.joint==='leaf'?'转换(关主门/关副门)':jointName(j.joint));}
 function labelDoor(d){return doorNames[d.source]||(d.source.startsWith('Rear_door_glass')?'早餐区玻璃推拉门':d.source.includes('Front Entrance')?'入户门':d.source.includes('Garage Converted')?'副客厅外门':d.source.includes('French')?'花园双开门':'房门');}
 
 async function load(){
@@ -80,6 +104,23 @@ async function load(){
   // Bifold panels have independent hinges but share one action.
   for(const d of doors){if(d.parent){doorById.get(d.parent).group.attach(d.group);}}
   for(const d of doors){d.basePosition=d.group.position.clone();d.baseQuaternion=d.group.quaternion.clone();d.localBoxes=d.meshes.map(m=>{m.geometry.computeBoundingBox();return {mesh:m,box:m.geometry.boundingBox.clone()};});applyDoor(d,d.amount);}
+  // Product parts: every joint carries sampled world-space deltas per rigid group of meshes.
+  // Parts are placed by setting their matrix directly (delta at the current amount x rest pose).
+  for(const j of metadata.joints||[]){
+   const groups=[];
+   for(const g of j.groups){
+    const nodes=g.meshes.map(n=>house.getObjectByName(n)).filter(Boolean);if(!nodes.length)continue;
+    groups.push({nodes,mats:g.m.map(a=>new THREE.Matrix4().fromArray(a))});
+    for(const o of nodes){if(!partNodes.has(o))partNodes.set(o,{rest:o.matrix.clone(),joints:[]});partNodes.get(o).joints.push(j.id);}
+   }
+   if(!groups.length)continue;
+   const meshes=[];groups.forEach(g=>g.nodes.forEach(o=>o.traverse(m=>{if(m.isMesh)meshes.push(m);})));
+   const part={...j,groups,meshes,amount:j.rest,target:j.rest,label:labelPart(j)};
+   meshes.forEach(m=>{(m.userData.parts||(m.userData.parts=[])).push(part);m.userData.interactivePart=true;});
+   parts.push(part);partById.set(j.id,part);
+  }
+  for(const o of partNodes.keys())o.matrixAutoUpdate=false;
+  applyParts();
   house.updateMatrixWorld(true);scene.updateMatrixWorld(true);
   // Geometry can be shared between meshes, so count users before anything is freed.
   const geomUsers=new Map();scene.traverse(o=>{if(o.isMesh)geomUsers.set(o.geometry,(geomUsers.get(o.geometry)||0)+1);});
@@ -108,7 +149,7 @@ async function load(){
   setProgress(88,'正在合并材质…');await new Promise(r=>setTimeout(r,20));
   // Merge fixed meshes by material after building collision data to keep rendering responsive.
   const buckets=new Map(),remove=[];
-  house.traverse(o=>{if(o.isMesh&&!Array.isArray(o.material)&&!o.userData.interactiveDoor){const k=o.material.uuid;if(!buckets.has(k))buckets.set(k,[]);buckets.get(k).push(o);}});
+  house.traverse(o=>{if(o.isMesh&&!Array.isArray(o.material)&&!o.userData.interactiveDoor&&!o.userData.interactivePart){const k=o.material.uuid;if(!buckets.has(k))buckets.set(k,[]);buckets.get(k).push(o);}});
   for(const list of buckets.values()){
    if(list.length<3)continue;
    const gs=list.map(o=>{let g=o.geometry.index?o.geometry.toNonIndexed():o.geometry.clone();g.applyMatrix4(o.matrixWorld);for(const a of Object.keys(g.attributes))if(!['position','normal','uv'].includes(a))g.deleteAttribute(a);if(!g.attributes.uv)g.setAttribute('uv',new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count*2),2));return g;});
@@ -120,8 +161,8 @@ async function load(){
   for(const o of remove){o.parent&&o.parent.remove(o);mergedUse.set(o.geometry,(mergedUse.get(o.geometry)||0)+1);}
   for(const [g,n] of mergedUse)if(!keepGeom.has(g)&&n>=(geomUsers.get(g)||0))g.dispose();
   setProgress(96,'正在布置房间导航…');makePlaces();ready=true;gotoPlace('P18');
-  setProgress(100,`${metadata.places.length} 个位置 · ${doors.length} 扇可开合门`);$('#startBtn').disabled=false;$('#startBtn').textContent='开始漫游 →';
-  window.walkthrough={ready:true,player,doors,metadata,gotoPlace,toggleDoor,step:movePlayer,updateDoors,applyDoor,scene,camera,renderer,octree,floorAt,doorHit,resolveStatic,start, floorMeshes, setView:(y,p=0)=>{yaw=y;pitch=p;},stats:()=>({meshes:metadata.meshes,doors:doors.length,triangles,position:player.toArray(),calls:renderer.info.render.calls})};
+  setProgress(100,`${metadata.places.length} 个位置 · ${doors.length} 扇门 · ${parts.length} 个家具活动件`);$('#startBtn').disabled=false;$('#startBtn').textContent='开始漫游 →';
+  window.walkthrough={ready:true,player,doors,parts,togglePart,metadata,gotoPlace,toggleDoor,step:movePlayer,updateDoors,applyDoor,scene,camera,renderer,octree,floorAt,doorHit,resolveStatic,start, floorMeshes, setView:(y,p=0)=>{yaw=y;pitch=p;},stats:()=>({meshes:metadata.meshes,doors:doors.length,triangles,position:player.toArray(),calls:renderer.info.render.calls})};
  }catch(e){console.error(e);$('#loadStatus').textContent='加载未完成：'+e.message;$('#startBtn').textContent='刷新重试';$('#startBtn').disabled=false;$('#startBtn').onclick=()=>location.reload();}
 }
 function applyDoor(d,t){
@@ -130,6 +171,30 @@ function applyDoor(d,t){
  if(d.kind==='slide')d.group.position.add(new THREE.Vector3().fromArray(d.closed).lerp(new THREE.Vector3().fromArray(d.opened),ease));
  else d.group.rotateY(THREE.MathUtils.lerp(d.closed,d.opened,ease));
  d.group.updateMatrixWorld(true);
+}
+const _p0=new THREE.Vector3(),_p1=new THREE.Vector3(),_s0=new THREE.Vector3(),_s1=new THREE.Vector3(),_q0=new THREE.Quaternion(),_q1=new THREE.Quaternion(),_d=new THREE.Matrix4();
+function sampleDelta(mats,t,out){
+ const s=THREE.MathUtils.clamp(t,0,1)*(mats.length-1),k=Math.min(Math.floor(s),mats.length-2),f=s-k;
+ mats[k].decompose(_p0,_q0,_s0);mats[k+1].decompose(_p1,_q1,_s1);
+ return out.compose(_p0.lerp(_p1,f),_q0.slerp(_q1,f),_s0.lerp(_s1,f));
+}
+function applyParts(){
+ for(const [o,info] of partNodes){
+  const m=info.rest.clone();
+  for(const id of info.joints){const p=partById.get(id);if(!p)continue;const g=p.groups.find(g=>g.nodes.includes(o));if(!g)continue;
+   // Deltas are relative to the exported pose, which sits at p.rest on this joint's range.
+   sampleDelta(g.mats,p.amount,_d);m.premultiply(_d);}
+  o.matrix.copy(m);o.matrixWorldNeedsUpdate=true;
+ }
+}
+function togglePart(p){
+ if(typeof p==='string')p=partById.get(p);if(!p)return;
+ p.target=p.target>.5?0:1;toast(partVerb(p,p.target>.5)+' · '+p.label);
+}
+function updateParts(dt){
+ let moved=false;
+ for(const p of parts){if(Math.abs(p.amount-p.target)<.001)continue;p.amount=THREE.MathUtils.clamp(p.amount+Math.sign(p.target-p.amount)*dt*1.1,0,1);moved=true;}
+ if(moved)applyParts();
 }
 function doorHit(pos,only=null){
  const list=only?[only]:doors;
@@ -224,16 +289,19 @@ function updateCamera(dt){
 }
 let tick=0;
 function interactions(){
- activeDoor=null;ray.setFromCamera(new THREE.Vector2(0,0),camera);ray.far=3;
- const objects=doors.flatMap(d=>d.meshes);
+ activeDoor=null;activePart=null;ray.setFromCamera(new THREE.Vector2(0,0),camera);ray.far=3;
+ const objects=doors.flatMap(d=>d.meshes).concat(parts.flatMap(p=>p.meshes));
  const hits=ray.intersectObjects(objects,false);const wall=octree.rayIntersect(ray.ray);
- if(hits[0]&&(!wall||wall.distance>hits[0].distance-.05))activeDoor=doorById.get(hits[0].object.userData.interactiveDoor);
- $('#doorHint').hidden=!activeDoor||!started;
+ if(hits[0]&&(!wall||wall.distance>hits[0].distance-.05)){const u=hits[0].object.userData;
+  // A mesh moved by several joints (a chair seat under lift and recline) picks the most specific one.
+  if(u.interactiveDoor)activeDoor=doorById.get(u.interactiveDoor);else if(u.parts)activePart=u.parts.reduce((a,b)=>b.meshes.length<a.meshes.length?b:a);}
+ $('#doorHint').hidden=!(activeDoor||activePart)||!started;
  if(activeDoor)$('#doorHint span').textContent=(activeDoor.target>.5?'关闭':'打开')+activeDoor.label;
+ else if(activePart)$('#doorHint span').textContent=partVerb(activePart,activePart.target<=.5)+' '+activePart.label;
  if(++tick%10===0&&metadata){let closest=null,dist=Infinity;for(const p of metadata.places){const v=new THREE.Vector3().fromArray(p.position);v.y-=1.62;const d=v.distanceTo(player);if(d<dist){dist=d;closest=p;}}if(closest&&closest.name!==lastRoom){$('#room').textContent=closest.name;$('#level').textContent=closest.floor;lastRoom=closest.name;}}
 }
 function frame(now){requestAnimationFrame(frame);const dt=Math.min((now-lastTime)/1000,.04);lastTime=now;
- if(ready){updateDoors(dt);
+ if(ready){updateDoors(dt);updateParts(dt);
   if(started&&$('#help').hidden&&$('#places').hidden){
    let f=(keys.has('KeyW')||keys.has('ArrowUp')?1:0)-(keys.has('KeyS')||keys.has('ArrowDown')?1:0),r=(keys.has('KeyD')||keys.has('ArrowRight')?1:0)-(keys.has('KeyA')||keys.has('ArrowLeft')?1:0);
    if(f||r){const v=new THREE.Vector3(r,0,-f).normalize().applyAxisAngle(up,yaw).multiplyScalar(dt*(keys.has('ShiftLeft')?2.5:1.45));const n=Math.ceil(v.length()/.035);for(let i=0;i<n;i++)walking+=movePlayer(v.x/n,v.z/n)*7;}
@@ -249,11 +317,11 @@ $('#startBtn').onclick=start;$('#modeBtn').onclick=toggleMode;$('#resetBtn').onc
 $('#placesBtn').onclick=()=>{document.exitPointerLock?.();$('#places').hidden=!$('#places').hidden;keys.clear();};$('#closePlaces').onclick=()=>$('#places').hidden=true;
 $('#helpBtn').onclick=()=>{document.exitPointerLock?.();$('#help').hidden=false;keys.clear();};$('#closeHelp').onclick=$('#helpContinue').onclick=()=>$('#help').hidden=true;
 {const t=$('#buildTag');if(t)t.textContent='版本 '+BUILD;}
-$('#doorHint').onclick=()=>toggleDoor(activeDoor);$('#fullscreenBtn').onclick=()=>document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen().catch(()=>{});
-document.addEventListener('keydown',e=>{if(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code))e.preventDefault();keys.add(e.code);if(e.repeat)return;if(e.code==='Escape'){document.exitPointerLock?.();keys.clear();drag=null;}if(e.code==='KeyE'&&started)toggleDoor(activeDoor);if(e.code==='KeyV')toggleMode();});
+$('#doorHint').onclick=()=>activePart?togglePart(activePart):toggleDoor(activeDoor);$('#fullscreenBtn').onclick=()=>document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen().catch(()=>{});
+document.addEventListener('keydown',e=>{if(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code))e.preventDefault();keys.add(e.code);if(e.repeat)return;if(e.code==='Escape'){document.exitPointerLock?.();keys.clear();drag=null;}if(e.code==='KeyE'&&started)activePart?togglePart(activePart):toggleDoor(activeDoor);if(e.code==='KeyV')toggleMode();});
 document.addEventListener('keyup',e=>keys.delete(e.code));window.addEventListener('blur',()=>keys.clear());document.addEventListener('visibilitychange',()=>keys.clear());document.addEventListener('pointerlockchange',()=>keys.clear());
 let drag=null;
-canvas.addEventListener('pointerdown',e=>{if(!started)return;if(activeDoor&&e.pointerType!=='touch'){toggleDoor(activeDoor);return;}drag={x:e.clientX,y:e.clientY};canvas.setPointerCapture(e.pointerId);});
+canvas.addEventListener('pointerdown',e=>{if(!started)return;if(activePart&&e.pointerType!=='touch'){togglePart(activePart);return;}if(activeDoor&&e.pointerType!=='touch'){toggleDoor(activeDoor);return;}drag={x:e.clientX,y:e.clientY};canvas.setPointerCapture(e.pointerId);});
 canvas.addEventListener('pointerup',e=>{if(drag&&Math.abs(e.clientX-drag.x)+Math.abs(e.clientY-drag.y)<5&&e.pointerType==='mouse')canvas.requestPointerLock?.()?.catch?.(()=>{});drag=null;});
 document.addEventListener('pointermove',e=>{if(!started)return;let dx=0,dy=0;if(document.pointerLockElement===canvas){dx=e.movementX;dy=e.movementY;}else if(drag&&e.target===canvas){dx=e.clientX-drag.x;dy=e.clientY-drag.y;drag={x:e.clientX,y:e.clientY};}yaw-=dx*.0025;pitch=THREE.MathUtils.clamp(pitch-dy*.0025,-1.25,1.25);});
 document.querySelectorAll('[data-key]').forEach(b=>{b.onpointerdown=e=>{e.preventDefault();b.setPointerCapture(e.pointerId);keys.add(b.dataset.key);};b.onpointerup=b.onpointercancel=()=>keys.delete(b.dataset.key);});
