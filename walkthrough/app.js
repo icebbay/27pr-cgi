@@ -1,6 +1,7 @@
-const BUILD='202609280150';
+const BUILD='202609282330';
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {DRACOLoader} from 'three/addons/loaders/DRACOLoader.js';
 import {Octree} from 'three/addons/math/Octree.js';
 import {Capsule} from 'three/addons/math/Capsule.js';
 import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
@@ -85,8 +86,10 @@ function labelDoor(d){const v13={Lounge:'主厅外开法式门',Utility:'副厅�
 async function load(){
  try{
   metadata=await (await fetch('./assets/house.json?v='+BUILD+'')).json();
-  const gltf=await new GLTFLoader().loadAsync('./assets/house'+(MOBILE?'-mobile':'')+'.glb?v='+BUILD,e=>setProgress(6+(e.total?e.loaded/e.total:0)*65,'正在布置家具与房间…'));
-  house=gltf.scene;scene.add(house);house.updateMatrixWorld(true);
+  // v19: geometry is Draco-compressed; the decoder ships in vendor/, no network needed.
+  const draco=new DRACOLoader().setDecoderPath('./vendor/addons/libs/draco/gltf/');
+  const gltf=await new GLTFLoader().setDRACOLoader(draco).loadAsync('./assets/house'+(MOBILE?'-mobile':'')+'.glb?v='+BUILD,e=>setProgress(6+(e.total?e.loaded/e.total:0)*65,'正在布置家具与房间…'));
+  draco.dispose();house=gltf.scene;scene.add(house);house.updateMatrixWorld(true);
   setProgress(75,'正在连接门和通道…');await new Promise(r=>setTimeout(r,30));
   // Imported door meshes are in world coordinates. Attach them to explicit hinges.
   for(const d of metadata.doors){
@@ -187,7 +190,7 @@ async function load(){
   if(!MOBILE)scene.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});
   setTime(1,true);
   setProgress(96,'正在布置房间导航…');makePlaces();ready=true;gotoPlace('P18');
-  setProgress(100,`${metadata.places.length} 个位置 · ${doors.length} 扇门 · ${parts.length} 个家具活动件 · ${lamps.length} 盏灯`);$('#startBtn').disabled=false;$('#startBtn').textContent='开始漫游 →';
+  setProgress(100,`${metadata.places.length} 个位置 · ${doors.length} 扇门 · ${parts.length} 个家具活动件`+(lamps.length?` · ${lamps.length} 盏灯`:''));$('#startBtn').disabled=false;$('#startBtn').textContent='开始漫游 →';
   window.walkthrough={ready:true,player,doors,parts,togglePart,lamps,switches,setNight,setTime,setLamp,pressSwitch,metadata,gotoPlace,toggleDoor,step:movePlayer,updateDoors,applyDoor,scene,camera,renderer,octree,floorAt,doorHit,resolveStatic,start, floorMeshes, setView:(y,p=0)=>{yaw=y;pitch=p;},stats:()=>({meshes:metadata.meshes,doors:doors.length,triangles,position:player.toArray(),calls:renderer.info.render.calls})};
  }catch(e){console.error(e);$('#loadStatus').textContent='加载未完成：'+e.message;$('#startBtn').textContent='刷新重试';$('#startBtn').disabled=false;$('#startBtn').onclick=()=>location.reload();}
 }
@@ -396,7 +399,7 @@ $('#placesBtn').onclick=()=>{document.exitPointerLock?.();$('#places').hidden=!$
 $('#helpBtn').onclick=()=>{document.exitPointerLock?.();$('#help').hidden=false;keys.clear();};$('#closeHelp').onclick=$('#helpContinue').onclick=()=>$('#help').hidden=true;
 {const t=$('#buildTag');if(t)t.textContent='版本 '+BUILD;}
 $('#doorHint').onclick=()=>activeSwitch?pressSwitch(activeSwitch):activeLamp?toggleLamp(activeLamp):activePart?togglePart(activePart):toggleDoor(activeDoor);$('#fullscreenBtn').onclick=()=>document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen().catch(()=>{});
-document.addEventListener('keydown',e=>{if(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code))e.preventDefault();keys.add(e.code);if(e.repeat)return;if(e.code==='Escape'){document.exitPointerLock?.();keys.clear();drag=null;}if(e.code==='KeyE'&&started)activeSwitch?pressSwitch(activeSwitch):activeLamp?toggleLamp(activeLamp):activePart?togglePart(activePart):toggleDoor(activeDoor);if(e.code==='KeyN')setTime(timeIndex+1);if(e.code==='KeyV')toggleMode();});
+document.addEventListener('keydown',e=>{if(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code))e.preventDefault();keys.add(e.code);if(e.repeat)return;if(e.code==='Escape'){document.exitPointerLock?.();keys.clear();drag=null;}if(e.code==='KeyE'&&started)activeSwitch?pressSwitch(activeSwitch):activeLamp?toggleLamp(activeLamp):activePart?togglePart(activePart):toggleDoor(activeDoor);if(e.code==='KeyN'&&metadata?.lamps?.length)setTime(timeIndex+1);if(e.code==='KeyV')toggleMode();});
 document.addEventListener('keyup',e=>keys.delete(e.code));window.addEventListener('blur',()=>keys.clear());document.addEventListener('visibilitychange',()=>keys.clear());document.addEventListener('pointerlockchange',()=>keys.clear());
 let drag=null;
 canvas.addEventListener('pointerdown',e=>{if(!started)return;if((activeSwitch||activeLamp)&&e.pointerType!=='touch'){activeSwitch?pressSwitch(activeSwitch):toggleLamp(activeLamp);return;}if(activePart&&e.pointerType!=='touch'){togglePart(activePart);return;}if(activeDoor&&e.pointerType!=='touch'){toggleDoor(activeDoor);return;}drag={x:e.clientX,y:e.clientY};canvas.setPointerCapture(e.pointerId);});
