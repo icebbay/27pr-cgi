@@ -1,4 +1,4 @@
-const BUILD='202610062330';
+const BUILD='202610062350';
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {DRACOLoader} from 'three/addons/loaders/DRACOLoader.js';
@@ -56,11 +56,11 @@ const arms=[-.24,.24].map(x=>bodyPart(new THREE.CapsuleGeometry(.055,.45,4,8),su
 function toast(t){$('#toast').textContent=t;$('#toast').classList.add('show');clearTimeout(hintTimer);hintTimer=setTimeout(()=>$('#toast').classList.remove('show'),2600);}
 function dataOf(o){while(o){if(o.userData.sourceName)return o.userData;o=o.parent;}return {};}
 function setProgress(n,t){$('#progressBar').style.width=n+'%';$('#loadStatus').textContent=t;}
-const doorNames={DoorHinge_GF_002:'杂物间门',DoorHinge_GF_003:'玄关门',DoorHinge_FF_014:'主卫转换门',DoorHinge_FF_007:'中间书房门',PassageHinge_FF:'次卧门',DoorHinge_FF_006:'主卧门',DoorHinge_FF_Rear215:'后卧室门',DoorHinge_FF_Bath245:'后卧室卫生间门',DoorHinge_GF_WC200:'楼下洗手间门',DoorHinge_FF_Room199:'次卧卫浴门',WC214_SlidingDoor_PROVISIONAL:'后房卫浴推拉门',SlidingLeaf_Dining:'餐厅推拉门',CLOSET_Bifold_Hinge1:'衣帽间折叠门',CLOSET_Bifold_Hinge2:'衣帽间折叠门',DuoClassic_GateHinge:'电梯入口门',V15_Left_Concealed_Hinge:'主厅吸音墙隐形门'};
+const doorNames={DoorHinge_GF_002:'杂物间门',DoorHinge_GF_003:'玄关门',DoorHinge_FF_014:'盥洗室转换门',DoorHinge_FF_007:'中间书房门',PassageHinge_FF:'主卧门',DoorHinge_FF_006:'卧室2门',DoorHinge_FF_Rear215:'后卧室门',DoorHinge_FF_Bath245:'后卧室卫生间门',DoorHinge_GF_WC200:'楼下洗手间门',DoorHinge_FF_Room199:'北卫门',WC214_SlidingDoor_PROVISIONAL:'后房卫浴推拉门',SlidingLeaf_Dining:'餐厅推拉门',CLOSET_Bifold_Hinge1:'衣帽间折叠门',CLOSET_Bifold_Hinge2:'衣帽间折叠门',DuoClassic_GateHinge:'电梯入口门',V15_Left_Concealed_Hinge:'主厅吸音墙隐形门'};
 // Movable product parts (exported from the product library's joints).
 const productNames={G02:'餐边柜',G03:'折叠泡茶桌',G09:'真皮沙发',G13:'鞋柜',G17:'展示柜',G18:'展示柜',G20:'马桶',G21:'电视柜',G22:'电视柜',G24:'软水机',G27:'吧台椅',G33:'移动屏风',
  F02:'箱体床',F03:'床头柜',F04:'床头柜',F05:'升降梳妆台',F07:'床头柜',F08:'床头柜',F10:'半镜柜',F12:'台盆柜',F13:'智能马桶',F16:'智能马桶',F17:'台盆柜',F21a:'升降书桌',F21b:'升降书桌',
- F24:'人体工学椅',F25:'主卫一门两用门',F26:'鞋帽间门',F27:'衣帽间门',F28:'人体工学椅',F29:'梳妆台',F31:'旋转毛巾架'};
+ F24:'人体工学椅',F25:'盥洗室一门两用门',F26:'鞋帽间门',F27:'衣帽间门',F28:'人体工学椅',F29:'梳妆台',F31:'旋转毛巾架'};
 function jointName(id){
  const n=m=>+m+1;let r;
  if(r=id.match(/^(?:base_)?door_(\d)_open$/))return (id.startsWith('base')?'下柜门':'柜门')+n(r[1]);
