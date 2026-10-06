@@ -1,4 +1,4 @@
-const BUILD='202610070010';
+const BUILD='202610070030';
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {DRACOLoader} from 'three/addons/loaders/DRACOLoader.js';
@@ -41,7 +41,7 @@ if(!MOBILE){renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSof
  sun.shadow.bias=-.0004;sun.shadow.normalBias=.03;}
 const player=new THREE.Vector3(3.64,.02,-.75),lastSafe=player.clone();
 let yaw=0,pitch=0,ready=false,started=false,thirdPerson=false,activeDoor=null,activePart=null,activeSwitch=null,activeLamp=null,night=false,walking=0,lastTime=performance.now(),lastRoom='',hintTimer=0;
-const keys=new Set(),floorMeshes=[],doors=[],doorById=new Map(),parts=[],partById=new Map(),partNodes=new Map(),leafParts=[],lamps=[],lampById=new Map(),switches=[],switchById=new Map(),ray=new THREE.Raycaster(),up=new THREE.Vector3(0,1,0),down=new THREE.Vector3(0,-1,0),octree=new Octree();
+const keys=new Set(),floorMeshes=[],doors=[],doorById=new Map(),parts=[],partById=new Map(),partNodes=new Map(),leafParts=[],lamps=[],lampById=new Map(),switches=[],switchById=new Map(),circuits=[],circById=new Map(),keyOn=new Map(),ray=new THREE.Raycaster(),up=new THREE.Vector3(0,1,0),down=new THREE.Vector3(0,-1,0),octree=new Octree();
 // A nine-level octree over 270k collision triangles is what makes iOS run out of memory,
 // so phones get a shallower tree with bigger leaves.
 octree.maxLevel=MOBILE?5:9;octree.trianglesPerLeaf=MOBILE?96:24;
@@ -140,14 +140,17 @@ async function load(){
    const light=null;
    const meshes=lampMeshes.get(l.id)||[];const glow=[];
    for(const m of meshes){m.userData.lamp=l.id;const mats=Array.isArray(m.material)?m.material:[m.material];
-    const own=mats.map(x=>{const hsl={};x.color?.getHSL(hsl);if(!x.emissive||hsl.l<.45)return x;const y=x.clone();glow.push(y);return y;});
+    const lensOnly=meshes.some(mm=>(Array.isArray(mm.material)?mm.material:[mm.material]).some(x=>/Lens/.test(x.name||'')));
+    const own=mats.map(x=>{const hsl={};x.color?.getHSL(hsl);if(!x.emissive||hsl.l<.45||(lensOnly&&!/Lens/.test(x.name||'')))return x;const y=x.clone();glow.push(y);return y;});
     m.material=Array.isArray(m.material)?own:own[0];}
-   const lamp={...l,light,meshes,glow,on:false,power:l.outdoor?l.energy:Math.max(5,l.energy*.26)};
+   const lamp={...l,light,meshes,glow,on:false,power:l.power??(l.outdoor?l.energy:Math.max(5,l.energy*.26))};
    lamps.push(lamp);lampById.set(l.id,lamp);
   }
   const swMeshes=new Map();
   house.traverse(o=>{if(!o.isMesh)return;const id=dataOf(o).switchId;if(!id)return;if(!swMeshes.has(id))swMeshes.set(id,[]);swMeshes.get(id).push(o);});
   for(const w of metadata.switches||[]){const meshes=swMeshes.get(w.id)||[];const sw={...w,meshes};meshes.forEach(m=>m.userData.switchId=w.id);switches.push(sw);switchById.set(w.id,sw);}
+  for(const c of metadata.circuits||[]){circuits.push(c);circById.set(c.id,c);}
+  for(const w of switches)w.lamps=[...new Set((w.keys||[]).flatMap(k=>circById.get(k.circuit)?.lamps||[]))];
   house.updateMatrixWorld(true);scene.updateMatrixWorld(true);
   // Geometry can be shared between meshes, so count users before anything is freed.
   const geomUsers=new Map();scene.traverse(o=>{if(o.isMesh)geomUsers.set(o.geometry,(geomUsers.get(o.geometry)||0)+1);});
@@ -191,7 +194,7 @@ async function load(){
   setTime(1,true);
   setProgress(96,'正在布置房间导航…');makePlaces();ready=true;gotoPlace('P18');
   setProgress(100,`${metadata.places.length} 个位置 · ${doors.length} 扇门 · ${parts.length} 个家具活动件`+(lamps.length?` · ${lamps.length} 盏灯`:''));$('#startBtn').disabled=false;$('#startBtn').textContent='开始漫游 →';
-  window.walkthrough={ready:true,player,doors,parts,togglePart,lamps,switches,setNight,setTime,setLamp,pressSwitch,metadata,gotoPlace,toggleDoor,step:movePlayer,updateDoors,applyDoor,scene,camera,renderer,octree,floorAt,doorHit,resolveStatic,start, floorMeshes, setView:(y,p=0)=>{yaw=y;pitch=p;},stats:()=>({meshes:metadata.meshes,doors:doors.length,triangles,position:player.toArray(),calls:renderer.info.render.calls})};
+  window.walkthrough={ready:true,player,doors,parts,togglePart,lamps,switches,circuits,keyOn,circuitOn,pressKey,setNight,setTime,setLamp,pressSwitch,metadata,gotoPlace,toggleDoor,step:movePlayer,updateDoors,applyDoor,scene,camera,renderer,octree,floorAt,doorHit,resolveStatic,start, floorMeshes, setView:(y,p=0)=>{yaw=y;pitch=p;},stats:()=>({meshes:metadata.meshes,doors:doors.length,triangles,position:player.toArray(),calls:renderer.info.render.calls})};
  }catch(e){console.error(e);$('#loadStatus').textContent='加载未完成：'+e.message;$('#startBtn').textContent='刷新重试';$('#startBtn').disabled=false;$('#startBtn').onclick=()=>location.reload();}
 }
 function applyDoor(d,t){
@@ -240,18 +243,18 @@ function updatePool(){if(!pool.length)return;const eye=player.clone().addScaledV
   const r=new THREE.Ray(eye.clone(),p.clone().sub(eye).normalize()),hit=octree.rayIntersect(r);
   if(hit&&hit.distance<d-.45)continue;lit.push({l,d});}
  lit.sort((a,b)=>a.d-b.d);
- pool.forEach((p,i)=>{const e=lit[i];if(!e||e.d>14){p.intensity=0;return;}p.position.fromArray(e.l.pos);p.color.setRGB(...e.l.color);p.intensity=e.l.power;p.distance=e.l.outdoor?7:9;});poolDirty=false;}
+ pool.forEach((p,i)=>{const e=lit[i];if(!e||e.d>14){p.intensity=0;return;}p.position.fromArray(e.l.pos);p.color.setRGB(...e.l.color);p.intensity=e.l.power;p.distance=e.l.range||(e.l.outdoor?7:9);});poolDirty=false;}
 function setLamp(l,on){if(typeof l==='string')l=lampById.get(l);if(!l)return;l.on=on;poolDirty=true;
  for(const m of l.glow){m.emissive.setRGB(...l.color);m.emissiveIntensity=on?(night?1.6:.8):0;}}
 function setTime(i,quiet){
  timeIndex=(i+TIMES.length)%TIMES.length;const t=TIMES[timeIndex];night=t.id==='night';
- ensurePool(t.lamps);scene.background=new THREE.Color(t.sky);hemi.intensity=t.hemi;ambient.intensity=t.amb;
+ ensurePool(t.lamps||lamps.some(l=>l.on));scene.background=new THREE.Color(t.sky);hemi.intensity=t.hemi;ambient.intensity=t.amb;
  sun.intensity=t.sun;sun.color.set(t.color);scene.environmentIntensity=t.env;renderer.toneMappingExposure=t.exp;
  sun.target.position.copy(HOUSE_CENTRE);sun.position.copy(HOUSE_CENTRE).addScaledVector(sunDirection(t.az,t.el),35);
  sun.castShadow=!MOBILE&&t.sun>.5;renderer.shadowMap.needsUpdate=true;
- for(const l of lamps)setLamp(l,t.lamps);
+ for(const l of lamps)setLamp(l,l.on);
  const b=$('#dayBtn');if(b)b.textContent=t.label;
- if(!quiet)toast(t.label+(t.id==='morning'?' · 太阳从东边后院照进来':t.id==='noon'?' · 太阳在南边':t.id==='evening'?' · 夕阳从西边前门方向照进来，灯已打开':' · 灯已打开，可用墙上开关逐间开关'));
+ if(!quiet)toast(t.label+(t.id==='morning'?' · 太阳从东边后院照进来':t.id==='noon'?' · 太阳在南边':t.id==='evening'?' · 夕阳从西边前门方向照进来，可以用墙上开关开灯':' · 看向墙上开关，按 E / 数字键开灯'));
 }
 function setNight(v){return setTime(v?3:1);}
 function setNightLegacy(v){
@@ -261,10 +264,20 @@ function setNightLegacy(v){
  for(const l of lamps)setLamp(l,v);
  const b=$('#dayBtn');if(b)b.textContent=v?'白天':'夜晚';toast(v?'夜晚 · 灯已打开，可用墙上开关逐间开关':'白天');
 }
+function circuitOn(c){let on=false;for(const [sid,i] of c.ways)if(keyOn.get(sid+'#'+i))on=!on;return on;}
+function keyName(k){const c=circById.get(k.circuit);return c?c.letter+' '+c.name.replace(/（.*?）/g,''):'未接灯';}
+function pressKey(w,i){if(typeof w==='string')w=switchById.get(w);if(!w||!w.keys?.[i])return;const k=w.keys[i],id=w.id+'#'+i;keyOn.set(id,!keyOn.get(id));
+ const c=circById.get(k.circuit);if(!c){toast(w.plate+' 第 '+(i+1)+' 键没有接灯');return;}const on=circuitOn(c);
+ if(on)ensurePool(true);c.lamps.forEach(l=>setLamp(l,on));swPanelFor=null;
+ toast(w.plate+(w.keys.length>1?' 键'+(i+1):'')+' · '+keyName(k)+' · '+(on?'开':'关')+(c.ways.length>2?'（三控）':c.ways.length>1?'（双控）':''));}
 function pressSwitch(w){if(typeof w==='string')w=switchById.get(w);if(!w)return;
- const ls=w.lamps.map(id=>lampById.get(id)).filter(Boolean);
- if(!ls.length){toast('这个开关还没有接灯（'+w.roomName+'）');return;}
- const on=!ls.some(l=>l.on);ls.forEach(l=>setLamp(l,on));toast((on?'开灯':'关灯')+' · '+w.roomName);}
+ if((w.keys||[]).length===1)return pressKey(w,0);toast(w.plate+' 有 '+w.keys.length+' 个键：按数字键 1–'+w.keys.length+' 或点屏幕下方的键');}
+let swPanelFor=null;
+function updateSwitchPanel(){let el=$('#switchKeys');if(!el){el=document.createElement('div');el.id='switchKeys';document.body.append(el);}
+ const w=started?activeSwitch:null;if(w===swPanelFor)return;swPanelFor=w;if(!w||!(w.keys||[]).length){el.hidden=true;el.innerHTML='';return;}
+ el.hidden=false;el.innerHTML='<div class="swHead">'+w.plate+' · '+(w.label||w.roomName)+'</div>'+w.keys.map((k,i)=>{const c=circById.get(k.circuit),on=c&&circuitOn(c);
+  return '<button data-i="'+i+'" class="'+(on?'on':'')+'"><kbd>'+(i+1)+'</kbd>'+keyName(k)+'</button>';}).join('');
+ el.querySelectorAll('button').forEach(b=>b.onclick=ev=>{ev.stopPropagation();pressKey(w,+b.dataset.i);});}
 function toggleLamp(l){setLamp(l,!l.on);toast((l.on?'开灯':'关灯')+' · '+(productNames[l.product]||l.roomName||'灯'));}
 function togglePart(p){
  if(typeof p==='string')p=partById.get(p);if(!p)return;
@@ -374,8 +387,8 @@ function interactions(){
  if(hits[0]&&(!wall||wall.distance>hits[0].distance-.05)){const u=hits[0].object.userData;
   // A mesh moved by several joints (a chair seat under lift and recline) picks the most specific one.
   if(u.switchId)activeSwitch=switchById.get(u.switchId);else if(u.lamp&&!u.parts)activeLamp=lampById.get(u.lamp);else if(u.interactiveDoor)activeDoor=doorById.get(u.interactiveDoor);else if(u.parts)activePart=u.parts.reduce((a,b)=>b.meshes.length<a.meshes.length?b:a);}
- $('#doorHint').hidden=!(activeDoor||activePart||activeSwitch||activeLamp)||!started;
- if(activeSwitch){const ls=activeSwitch.lamps.map(id=>lampById.get(id)).filter(Boolean);$('#doorHint span').textContent=ls.length?((ls.some(l=>l.on)?'关灯':'开灯')+' · '+activeSwitch.roomName):'开关 · '+activeSwitch.roomName+'（未接灯）';}
+ $('#doorHint').hidden=!(activeDoor||activePart||activeSwitch||activeLamp)||!started;updateSwitchPanel();
+ if(activeSwitch){const w=activeSwitch,k0=(w.keys||[])[0],c0=k0&&circById.get(k0.circuit);$('#doorHint span').textContent=(w.keys||[]).length>1?(w.plate+' · '+w.keys.length+' 键 · 按 1–'+w.keys.length):(c0?((circuitOn(c0)?'关灯':'开灯')+' · '+keyName(k0)):w.plate+'（未接灯）');}
  else if(activeLamp)$('#doorHint span').textContent=(activeLamp.on?'关灯':'开灯')+' · '+(productNames[activeLamp.product]||activeLamp.roomName);
  else if(activeDoor)$('#doorHint span').textContent=(activeDoor.target>.5?'关闭':'打开')+activeDoor.label;
  else if(activePart)$('#doorHint span').textContent=partVerb(activePart,activePart.target<=.5)+' '+activePart.label;
@@ -399,7 +412,7 @@ $('#placesBtn').onclick=()=>{document.exitPointerLock?.();$('#places').hidden=!$
 $('#helpBtn').onclick=()=>{document.exitPointerLock?.();$('#help').hidden=false;keys.clear();};$('#closeHelp').onclick=$('#helpContinue').onclick=()=>$('#help').hidden=true;
 {const t=$('#buildTag');if(t)t.textContent='版本 '+BUILD;}
 $('#doorHint').onclick=()=>activeSwitch?pressSwitch(activeSwitch):activeLamp?toggleLamp(activeLamp):activePart?togglePart(activePart):toggleDoor(activeDoor);$('#fullscreenBtn').onclick=()=>document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen().catch(()=>{});
-document.addEventListener('keydown',e=>{if(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code))e.preventDefault();keys.add(e.code);if(e.repeat)return;if(e.code==='Escape'){document.exitPointerLock?.();keys.clear();drag=null;}if(e.code==='KeyE'&&started)activeSwitch?pressSwitch(activeSwitch):activeLamp?toggleLamp(activeLamp):activePart?togglePart(activePart):toggleDoor(activeDoor);if(e.code==='KeyN'&&metadata?.lamps?.length)setTime(timeIndex+1);if(e.code==='KeyV')toggleMode();});
+document.addEventListener('keydown',e=>{if(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code))e.preventDefault();keys.add(e.code);if(e.repeat)return;if(e.code==='Escape'){document.exitPointerLock?.();keys.clear();drag=null;}if(e.code==='KeyE'&&started)activeSwitch?pressSwitch(activeSwitch):activeLamp?toggleLamp(activeLamp):activePart?togglePart(activePart):toggleDoor(activeDoor);if(e.code==='KeyN'&&metadata?.lamps?.length)setTime(timeIndex+1);if(started&&activeSwitch&&/^Digit[1-9]$/.test(e.code))pressKey(activeSwitch,+e.code.slice(5)-1);if(e.code==='KeyV')toggleMode();});
 document.addEventListener('keyup',e=>keys.delete(e.code));window.addEventListener('blur',()=>keys.clear());document.addEventListener('visibilitychange',()=>keys.clear());document.addEventListener('pointerlockchange',()=>keys.clear());
 let drag=null;
 canvas.addEventListener('pointerdown',e=>{if(!started)return;if((activeSwitch||activeLamp)&&e.pointerType!=='touch'){activeSwitch?pressSwitch(activeSwitch):toggleLamp(activeLamp);return;}if(activePart&&e.pointerType!=='touch'){togglePart(activePart);return;}if(activeDoor&&e.pointerType!=='touch'){toggleDoor(activeDoor);return;}drag={x:e.clientX,y:e.clientY};canvas.setPointerCapture(e.pointerId);});
