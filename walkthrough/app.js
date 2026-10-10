@@ -1,4 +1,4 @@
-const BUILD='202610070030';
+const BUILD='202610101215';
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {DRACOLoader} from 'three/addons/loaders/DRACOLoader.js';
