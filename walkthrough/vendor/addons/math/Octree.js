@@ -220,7 +220,12 @@ class Octree {
 					box.min.copy( this.box.min ).add( v.multiply( halfsize ) );
 					box.max.copy( box.min ).add( halfsize );
 
-					subTrees.push( new Octree( box ) );
+					// 27PR: children inherit the leaf size and depth limit set on the root (otherwise they fall back to
+					// 8 triangles / 16 levels and the collision tree explodes to millions of nodes -> tab crash)
+					const child = new Octree( box );
+					child.trianglesPerLeaf = this.trianglesPerLeaf;
+					child.maxLevel = this.maxLevel;
+					subTrees.push( child );
 
 				}
 
