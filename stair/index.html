@@ -1,0 +1,39 @@
+<!doctype html><html lang="zh"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>27PR · 楼梯 CGI</title>
+<style>
+:root{--bg:#efede7;--ink:#283c32;--card:#faf9f5;--muted:#6b766f;--accent:#3d7a58}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 system-ui,"Microsoft YaHei",sans-serif}
+header{padding:20px 16px;background:var(--card);display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:center}
+header h1{margin:0;font-size:22px}header small{color:var(--muted)}
+nav a{color:var(--ink);text-decoration:none;border:1px solid #c9cfc6;border-radius:20px;padding:6px 14px;margin-left:6px;display:inline-block;margin-top:4px}
+main{max-width:1240px;margin:0 auto;padding:16px}
+.note{background:#fff0cd;padding:10px 16px;border-radius:8px;margin-bottom:16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,380px),1fr));gap:16px}
+figure{margin:0;background:var(--card);border-radius:10px;overflow:hidden;cursor:zoom-in}
+figure img{width:100%;display:block}figcaption{padding:8px 12px;font-size:14px}
+#lb{position:fixed;inset:0;background:rgba(0,0,0,.88);display:none;align-items:center;justify-content:center;cursor:zoom-out;padding:12px}
+#lb img{max-width:100%;max-height:100%}
+table{border-collapse:collapse;width:100%;background:var(--card);border-radius:10px;overflow:hidden;margin-top:18px;font-size:14px}
+td,th{padding:7px 10px;border-bottom:1px solid #e3e1da;text-align:left;vertical-align:top}
+</style>
+<header><div><h1>27PR / 楼梯 · 方案 B · 胡桃木 + 白踢面 + 黑铁栏杆</h1><small>2026-10-22 · 13 级 × 207.7 到 +2700 平台，总长 3730 · 底部两级改为方形（按业主参考图） · 初步方案，未经现场核实</small></div>
+<nav><a href="../">← 全屋 CGI 相册</a><a href="../walkthrough/">走进家里 · 实时漫游 →</a></nav></header>
+<main>
+<div class="note">踏步：NodLg Walnut 2.0 mm 胶粘 LVT；踏步边：Cayrus A41 Mocca Oak 35×35 铝包边；踢面：3.2 mm 白面硬质纤维板；扶手 / 立柱：深胡桃木；栏杆：黑色麻花 + 花篮铁艺。扶手顶在坡度线上 927 mm，栏杆净距 70 / 46 mm（&lt;100）。</div>
+<div class="grid" id="g"></div>
+<table>
+<tr><th>产品</th><th>数量</th><th>费用（含 VAT）</th></tr>
+<tr><td>NodLg Walnut 胶粘 LVT 2.0 mm（B&amp;Q Marketplace）</td><td>3 包</td><td>£239.97</td></tr>
+<tr><td>Cayrus A41 Mocca Oak 铝踏步包边 0.9 m（B&amp;Q Marketplace）</td><td>21 根</td><td>£356.79</td></tr>
+<tr><td>Selco 白面硬质纤维板 2440×1220×3.2 mm</td><td>3 张</td><td>£85.17</td></tr>
+<tr><td colspan="2"><b>已指定产品小计</b>（扶手、立柱、栏杆、胶未选型，未计价）</td><td><b>£681.93</b></td></tr>
+</table>
+</main>
+<div id="lb"><img alt=""></div>
+<script>
+const items=[["01_full_stair_from_bottom","门厅看整座楼梯"],["02_full_stair_from_top","从楼上往下看"],["03_three_quarter","餐厅三分之四视角"],
+["04_closeup_LVT_and_nosing","LVT 与铝包边近景"],["05_closeup_riser_junction","白踢面接缝近景"],["06_closeup_handrail_balusters","胡桃木扶手与黑铁栏杆"],
+["07_exploded_tread_assembly","单级踏步爆炸图"],["08_cross_section","剖面：材料厚度与固定方式"],["08b_cross_section_nosing_zoom","剖面放大：包边处"]];
+const g=document.getElementById('g'),lb=document.getElementById('lb');
+for(const [f,t] of items){const fig=document.createElement('figure');fig.innerHTML=`<img loading="lazy" src="${f}.jpg" alt="${t}"><figcaption>${t}</figcaption>`;fig.onclick=()=>{lb.querySelector('img').src=f+'.jpg';lb.style.display='flex'};g.append(fig)}
+lb.onclick=()=>lb.style.display='none';
+</script></html>
